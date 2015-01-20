@@ -5,7 +5,7 @@
 # Michael Jennings <mej@lbl.gov>
 # 29 June 2012
 #
-# $Id: nhc-test 1343 2013-04-01 23:27:08Z mej $
+# $Id: nhc-test 1791 2014-10-02 22:43:50Z mej $
 #
 
 # This script is used to perform unit testing on the NHC driver script
@@ -127,9 +127,9 @@ function test_nhc_driver() {
         unlike $LOGFILE '/[<>|&]/' '$LOGFILE contains no redirection'
         is $DEBUG 0 'Debugging off by default'
         is $SILENT 0 'Silent mode off by default'
+        is $VERBOSE 0 'Verbose mode off by default'
         is $MARK_OFFLINE 1 'Nodes marked offline by default'
-        is $TIMEOUT 10 '10 second script timeout by default'
-        cmp_ok $MAX_SYS_UID "-lt" 1000 'Reasonable range for system UIDs'
+        cmp_ok ${TIMEOUT:-999999} "-le" 300 'Reasonable default script timeout'
     } ; unplan
 
     plan 1 "nhcmain_check_conffile" && {

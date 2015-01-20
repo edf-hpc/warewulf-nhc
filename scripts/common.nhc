@@ -3,10 +3,11 @@
 # Michael Jennings <mej@lbl.gov>
 # 15 December 2010
 #
-# $Id: common.nhc 1626 2014-03-21 21:46:45Z mej $
+# $Id: common.nhc 1793 2014-10-07 23:26:33Z mej $
 #
 
 PASSWD_DATA_SRC="${PASSWD_DATA_SRC:-/etc/passwd}"
+LOGIN_DEFS_SRC="${LOGIN_DEFS_SRC:-/etc/login.defs}"
 
 RANGE_MATCH_REGEXP1='^[-a-zA-Z0-9_]+[0-9]+[-\.a-zA-Z0-9]*$'
 RANGE_MATCH_REGEXP2='^([-a-zA-Z0-9_]+)\[([0-9]+)\-([0-9]+)\]([-\.a-zA-Z0-9]*)$'
@@ -94,15 +95,27 @@ function array_split() {
 ### Example:  array_join ',' FIELDS RESULT
 function array_join() {
     local SEP="$1" ANAME="$2" OUTVAR="$3"
-    local SAVEIFS="$IFS"
+    local SAVEIFS="$IFS" i TMP CNT
 
-    IFS="$SEP"
-    if [[ -n "$OUTVAR" ]]; then
-        eval "$OUTVAR"'="${'"$ANAME"'[*]}"'
+    if [[ ${#SEP} -eq 1 ]]; then
+        IFS="$SEP"
+        if [[ -n "$OUTVAR" ]]; then
+            eval "$OUTVAR"'="${'"$ANAME"'[*]}"'
+        else
+            eval echo '"${'"$ANAME"'[*]}"'
+        fi
+        IFS="$SAVEIFS"
     else
-        eval echo '"${'"$ANAME"'[*]}"'
+        eval 'TMP="${'"$ANAME"'[0]}" CNT="${#'"$ANAME"'[*]}"'
+        for ((i=1; i < CNT; i++)); do
+            eval 'TMP="$TMP$SEP${'"$ANAME"'[$i]}"'
+        done
+        if [[ -n "$OUTVAR" ]]; then
+            eval "$OUTVAR"'="$TMP"'
+        else
+            echo "$TMP"
+        fi
     fi
-    IFS="$SAVEIFS"
 }
 ###########################################################
 
@@ -446,17 +459,22 @@ function nhc_common_unparse_size() {
     local VAL=$1
     local VAR=$2
     local MULT=${3:-1024}
+    local ERRVAR=$4
     local -a SUFFIXES=( k M G T P E )
-    local i
+    local i RNDERR
 
     if [[ -n "$VAL" ]]; then
         for ((i=0; VAL >= ${MULT} && i < ${#SUFFIXES[*]}-1; i++)); do
+            ((RNDERR=VAL%$MULT))
             ((VAL/=${MULT}))
         done
         VAL="$VAL${SUFFIXES[$i]}B"
     fi
     if [[ -n "$VAR" ]]; then
         eval $VAR='"$VAL"'
+    fi
+    if [[ -n "$ERRVAR" ]]; then
+        eval $ERRVAR='"$RNDERR"'
     fi
 }
 
@@ -486,17 +504,22 @@ function nhc_common_unparse_count() {
     local VAL=$1
     local VAR=$2
     local MULT=${3:-1000}
+    local ERRVAR=$4
     local -a SUFFIXES=( [0]='' [1]=k M G T P E )
-    local i
+    local i RNDERR
 
     if [[ -n "$VAL" ]]; then
         for ((i=0; VAL >= ${MULT} && i < ${#SUFFIXES[*]}; i++)); do
+            ((RNDERR=VAL%$MULT))
             ((VAL/=${MULT}))
         done
         VAL="$VAL${SUFFIXES[$i]}"
     fi
     if [[ -n "$VAR" ]]; then
         eval $VAR='"$VAL"'
+    fi
+    if [[ -n "$ERRVAR" ]]; then
+        eval $ERRVAR='"$RNDERR"'
     fi
 }
 
@@ -527,4 +550,18 @@ function nhc_cmd_with_timeout() {
     RET=$?
     #exec 2>&3 3>&-
     return $RET
+}
+
+# Find system definition for UID range
+function nhc_common_get_max_sys_uid() {
+    local LINE
+
+    if [[ -e "$LOGIN_DEFS_SRC" ]]; then
+        while read LINE ; do
+            if [[ "${LINE##UID_MIN}" != "$LINE" ]]; then
+                MAX_SYS_UID="${LINE//[^0-9]}"
+                break
+            fi
+        done < "$LOGIN_DEFS_SRC"
+    fi
 }

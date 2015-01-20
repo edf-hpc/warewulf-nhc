@@ -1,4 +1,4 @@
-# $Id: Makefile.am 1628 2014-03-24 19:22:17Z mej $
+# $Id: Makefile.am 1804 2014-10-16 01:15:38Z mej $
 
 AUTOMAKE_OPTIONS = foreign
 SUBDIRS = bench test
@@ -7,7 +7,7 @@ helperdir = $(libexecdir)/nhc
 confdir = $(sysconfdir)/nhc
 logrotatedir = $(sysconfdir)/logrotate.d
 
-dist_sbin_SCRIPTS = nhc
+dist_sbin_SCRIPTS = nhc nhc-genconf nhc-wrapper
 dist_conf_DATA = nhc.conf
 dist_helper_SCRIPTS = helpers/node-mark-online helpers/node-mark-offline
 
@@ -15,7 +15,8 @@ nobase_dist_conf_DATA = scripts/ww_cmd.nhc scripts/common.nhc	\
                         scripts/ww_dmi.nhc scripts/ww_file.nhc	\
                         scripts/ww_fs.nhc scripts/ww_hw.nhc	\
                         scripts/ww_job.nhc scripts/ww_moab.nhc	\
-                        scripts/ww_nv.nhc scripts/ww_ps.nhc
+                        scripts/ww_net.nhc scripts/ww_nv.nhc	\
+                        scripts/ww_ps.nhc
 
 MAINTAINERCLEANFILES = Makefile.in aclocal.m4 configure install-sh missing
 DISTCLEANFILES = 
@@ -29,7 +30,7 @@ install-data-local:
 
 uninstall-local:
 	-( cd '$(DESTDIR)$(logrotatedir)' && rm -f nhc )
-	-rm -f '$(DESTDIR)$(localstatedir)/lib/nhc'
+	-rm -f '$(DESTDIR)$(localstatedir)/lib/nhc' '$(DESTDIR)$(localstatedir)/run/nhc'
 
 test:
 	$(MAKE) -C test test

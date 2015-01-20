@@ -5,7 +5,7 @@
 # Michael Jennings <mej@lbl.gov>
 # 13 December 2010
 #
-# $Id: nhc 1633 2014-03-28 00:01:46Z mej $
+# $Id: nhc 1842 2014-12-02 01:16:11Z mej $
 #
 
 # This is the driver program for the node health check script
@@ -29,7 +29,7 @@ function die() {
     shift
 
     CHECK_DIED=1
-    log "Health check failed:  $*"
+    log "ERROR:  $NAME:  Health check failed:  $*"
     syslog "Health check failed:  $*"
     syslog_flush
     if [[ "$MARK_OFFLINE" == "1" && "$FAIL_CNT" == "0" ]]; then
@@ -38,20 +38,24 @@ function die() {
     if [[ -n "$NHC_DETACHED" ]]; then
         echo "$RET $*" > $RESULTFILE
     elif [[ "$NHC_RM" == "sge" ]]; then
-        echo "begin"
-        echo "$HOSTNAME:healthy:false"
-        echo "$HOSTNAME:diagnosis:NHC: $*"
-        echo "end"
+        echo "begin" >&$NHC_FD_OUT
+        echo "$HOSTNAME:healthy:false" >&$NHC_FD_OUT
+        echo "$HOSTNAME:diagnosis:NHC: $*" >&$NHC_FD_OUT
+        echo "end" >&$NHC_FD_OUT
         return 77
-    else
-        oecho "ERROR Health check failed:  $*"
+    elif [[ -n "$LOGFILE" ]]; then
+        oecho "ERROR:  $NAME:  Health check failed:  $*"
     fi
     if [[ "$NHC_CHECK_ALL" == "1" ]]; then
         ((FAIL_CNT++))
         return 0
     fi
-    kill_watchdog
-    [[ -n "$LOGFILE" ]] && exec 1>&3- 2>&4-
+    if [[ $RET -ne 142 && $RET -ne 143 ]]; then
+        # Don't kill the watchdog if we're in die() because it is terminating us.
+        kill_watchdog
+    fi
+    [[ $NHC_FD_OUT -eq 3 ]] && exec 1>&3- 2>&4-
+    [[ "$NHC_CHECK_FORKED" == "1" ]] && ((RET+=100))
     exit $RET
 }
 
@@ -91,7 +95,7 @@ function oecho() {
 
     if [[ "$SILENT" == "0" ]]; then
         [[ $TS -ne 0 ]] && PREFIX="[$SECONDS] - "
-        echo "$PREFIX$@" >&3
+        echo "$PREFIX$@" >&$NHC_FD_OUT
     fi
 }
 
@@ -101,7 +105,7 @@ function eecho() {
 
     if [[ "$SILENT" == "0" ]]; then
         [[ $TS -ne 0 ]] && PREFIX="[$SECONDS] - "
-        echo "$PREFIX$@" >&4
+        echo "$PREFIX$@" >&$NHC_FD_ERR
     fi
 }
 
@@ -111,7 +115,7 @@ function vecho() {
 
     if [[ "$VERBOSE" == "1" ]]; then
         [[ $TS -ne 0 ]] && PREFIX="[$SECONDS] - "
-        echo "$PREFIX$@" >&3
+        echo "$PREFIX$@" >&$NHC_FD_OUT
     fi
 }
 
@@ -126,14 +130,27 @@ function syslog() {
 
 function syslog_flush() {
     if [[ -n "$LOGGER_TEXT" ]]; then
-        echo "$LOGGER_TEXT" | logger -p daemon.err -t "$NAME[$$]"
+        echo "$LOGGER_TEXT" | logger -p daemon.err -t "$NAME[${BASHPID:-$$}]"
     fi
     LOGGER_TEXT=""
 }
 
 function kill_watchdog() {
+    local i
+
     dbg "$FUNCNAME:  Watchdog PID is $WATCHDOG_PID."
-    [[ $WATCHDOG_PID -gt 0 ]] && kill -TERM $WATCHDOG_PID >/dev/null 2>&1
+    if [[ $WATCHDOG_PID -ne 0 ]]; then
+        for i in 1 2 3 4 ; do
+            dbg "Killing watchdog timer $WATCHDOG_PID -- Attempt #$i"
+            kill -s USR2 -- -$WATCHDOG_PID $WATCHDOG_PID 2>/dev/null || return 0
+            kill -s USR1 -- -$WATCHDOG_PID $WATCHDOG_PID 2>/dev/null || return 0
+            kill -s INT -- -$WATCHDOG_PID $WATCHDOG_PID 2>/dev/null || return 0
+            kill -s PWR -- -$WATCHDOG_PID $WATCHDOG_PID 2>/dev/null || return 0
+            sleep 1
+        done
+        log "Killing hung watchdog timer process/group $WATCHDOG_PID"
+        kill -s KILL -- -$WATCHDOG_PID $WATCHDOG_PID 2>/dev/null
+    fi
     return 0
 }
 
@@ -155,18 +172,24 @@ function nhcmain_init_env() {
     RET=0
     LOGGER_TEXT=""
     NHC_PID=$$
+    if [[ -z "$BASHPID" || "$BASHPID" != "$NHC_PID" ]]; then
+        unset BASHPID
+    fi
     NHC_START_TS=0
     WATCHDOG_PID=0
     FAIL_CNT=0
+    FORCE_SETSID=1
+    NHC_FD_OUT=1
+    NHC_FD_ERR=2
     export PATH SYSCONFIGDIR LIBEXECDIR HOSTNAME HOSTNAME_S RET LOGGER_TEXT
-    export NHC_PID NHC_START_TS WATCHDOG_PID FAIL_CNT
+    export NHC_PID NHC_START_TS WATCHDOG_PID FAIL_CNT FORCE_SETSID NHC_FD_OUT NHC_FD_ERR
 
     # Users may override this in /etc/sysconfig/nhc.
     NAME=${0/#*\/}
 
     # Don't allow previous environment to leak in.  Must be done from /etc/sysconfig/nhc only.
     unset CONFDIR CONFFILE INCDIR HELPERDIR ONLINE_NODE OFFLINE_NODE LOGFILE DEBUG SILENT VERBOSE TIMEOUT
-    unset RESULTFILE MAX_SYS_UID NHC_RM NHC_CHECK_ALL
+    unset RESULTFILE MAX_SYS_UID NHC_RM NHC_CHECK_ALL NHC_CHECK_FORKED
 
     if [[ -n "$NHC_DETACHED" ]]; then
         # We're running detached.
@@ -194,13 +217,15 @@ $UNDERLINE
 -------------------------------------------------------------------------------
  -h                Show command line help (this info)
  -D <confdir>      Use config directory <confdir> (default: /etc/<name>)
+ -a                Run ALL checks; don't exit on first failure (NHC_CHECK_ALL=1)
  -c <conffile>     Load config from <conffile> (default: <confdir>/<name>.conf)
  -d                Activate debugging output (i.e., DEBUG=1)
+ -f                Run checks in forked subprocesses (i.e., NHC_CHECK_FORKED=1)
+ -l <logspec>      Log output to <logspec> (i.e., LOGFILE=<logspec>)
  -n <name>         Set program name to <name> (default: nhc); see -D & -c above
  -q                Run quietly (i.e., SILENT=1)
- -v                Run verbosely (i.e., VERBOSE=1)
  -t <timeout>      Use timeout of <timeout> seconds (default: 10)
- -a                Run ALL checks; don't exit on first failure (NHC_CHECK_ALL=1)
+ -v                Run verbosely (i.e., VERBOSE=1)
 
  All other command line parameters, if any, must be environment variable
  settings in the form VARNAME=value.
@@ -224,12 +249,13 @@ function nhcmain_parse_cmdline() {
     local OPTION
 
     OPTIND=1
-    while getopts ":D:ac:dhl:n:qt:v" OPTION ; do
+    while getopts ":D:ac:dfhl:n:qt:v" OPTION ; do
         case "$OPTION" in
             D) CONFDIR="$OPTARG" ; dbg "\$CONFDIR set to $CONFDIR." ;;
             a) NHC_CHECK_ALL=1 ; dbg "Force running of all checks." ;;
             c) CONFFILE="$OPTARG" ; dbg "\$CONFFILE set to $CONFFILE." ;;
             d) DEBUG=1 ; dbg "Debugging activated via -d option." ;;
+            f) NHC_CHECK_FORKED=1 ; dbg "Checks will be run in forked subprocesses." ;;
             h) nhcmain_help ; exit 0 ;;
             l) LOGFILE="$OPTARG" ; dbg "\$LOGFILE set to $LOGFILE." ;;
             n) NAME="$OPTARG" ; dbg "\$NAME set to $NAME." ;;
@@ -275,9 +301,28 @@ function nhcmain_finalize_env() {
     MARK_OFFLINE=${MARK_OFFLINE:-1}
     DETACHED_MODE=${DETACHED_MODE:-0}
     DETACHED_MODE_FAIL_NODATA=${DETACHED_MODE_FAIL_NODATA:-0}
-    TIMEOUT=${TIMEOUT:-10}
-    MAX_SYS_UID=${MAX_SYS_UID:-99}
+    TIMEOUT=${TIMEOUT:-30}
     NHC_CHECK_ALL=${NHC_CHECK_ALL:-0}
+    NHC_CHECK_FORKED=${NHC_CHECK_FORKED:-0}
+    export NHC_SID=0
+
+    # Check for session leader.
+    kill -s 0 -- -$NHC_PID >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        # We're already a session leader, possibly after setsid, possibly not.
+        dbg "NHC process $NHC_PID is session leader."
+        NHC_SID=-$NHC_PID
+    elif [[ -n "$NHC_FORCED_SESSION" && "$NHC_FORCED_SESSION" == "$NHC_PID" ]]; then
+        # We tried to become a session leader via setsid.  Apparently we failed.
+        # Don't try again since that would create an infinite loop.
+        dbg "NHC failed to become session leader."
+    elif [[ "$FORCE_SETSID" == "1" && -z "$NHC_LOAD_ONLY" ]]; then
+        # We are not yet a session leader, but we haven't tried setsid.  Try now.
+        dbg "NHC process $NHC_PID is not session leader."
+        dbg "Restarting via setsid:  setsid $0 ${NHC_ARGS_LIST[*]} FORCE_SETSID=0"
+        export NHC_FORCED_SESSION=$NHC_PID
+        exec setsid "$0" "${NHC_ARGS_LIST[@]}" "FORCE_SETSID=0"
+    fi
 
     if [[ "${LOGFILE##/}" != "$LOGFILE" ]]; then
         # If the log file looks like a path rather than a redirect, fix it.
@@ -320,7 +365,7 @@ function nhcmain_finalize_env() {
         return
     fi
 
-    export NAME CONFDIR CONFFILE INCDIR HELPERDIR ONLINE_NODE OFFLINE_NODE LOGFILE DEBUG TS SILENT TIMEOUT MAX_SYS_UID NHC_RM
+    export NAME CONFDIR CONFFILE INCDIR HELPERDIR ONLINE_NODE OFFLINE_NODE LOGFILE DEBUG TS SILENT TIMEOUT NHC_RM
 }
 
 function nhcmain_find_rm() {
@@ -330,26 +375,27 @@ function nhcmain_find_rm() {
     if [[ -d /var/spool/torque ]]; then
         NHC_RM="pbs"
         return 0
+    elif [[ -n "$SGE_ROOT" && -x "$SGE_ROOT/util/arch" ]]; then
+        # SGE binaries typically won't be on the path defined above in the
+        # load sensor environment, but SGE_ROOT will be there.
+        NHC_RM="sge"
     fi
 
-    IFS=':'
-    DIRLIST=( $PATH )
-    IFS=$' \t\n'
-    for DIR in "${DIRLIST[@]}" ; do
-        if [[ -x "$DIR/pbsnodes" ]]; then
-            NHC_RM="pbs"
-            return 0
-        elif [[ -x "$DIR/scontrol" ]]; then
-            NHC_RM="slurm"
-            return 0
-        elif [[ -x "$DIR/badmin" ]]; then
-            NHC_RM="lsf"
-            return 0
-        elif [[ -x "$DIR/qselect" ]]; then
-            NHC_RM="sge"
-            return 0
-        fi
-    done
+    # Search PATH for commands
+    if type -a -p -f -P pbsnodes >&/dev/null ; then
+        NHC_RM="pbs"
+        return 0
+    elif type -a -p -f -P scontrol >&/dev/null ; then
+        NHC_RM="slurm"
+        return 0
+    elif type -a -p -f -P badmin >&/dev/null ; then
+        NHC_RM="lsf"
+        return 0
+    elif type -a -p -f -P qselect >&/dev/null ; then
+        NHC_RM="sge"
+        return 0
+    fi
+
     if [[ -z "$NHC_RM" ]]; then
         log "Unable to detect resource manager."
         return 1
@@ -361,10 +407,15 @@ function nhcmain_redirect_output() {
         exec 3>&1- 4>&2-
         eval exec $LOGFILE
         if [[ $? -ne 0 ]]; then
-            syslog "Unable to write to LOGFILE (\"$LOGFILE\") as user \"$USER\" (uid $EUID) -- Read-only filesystem?  Suppressing further output."
-            exec >/dev/null
+            exec 1>&3- 2>&4-
+            echo "ERROR NHC:  FATAL:  Can't write $LOGFILE as $USER (uid $EUID) -- Read-only filesystem/device failure?"
+            syslog "NHC:  FATAL:  Can't write $LOGFILE as $USER (uid $EUID) -- Read-only filesystem/device failure?"
+            syslog_flush
+            exit 1
         else
             dbg "Output redirected per LOGFILE variable $LOGFILE"
+            NHC_FD_OUT=3
+            NHC_FD_ERR=4
         fi
     fi
 }
@@ -383,7 +434,7 @@ function nhcmain_load_scripts() {
 
     # Load all include scripts.
     dbg "Loading scripts from $INCDIR..."
-    for SCRIPT in $INCDIR/* ; do
+    for SCRIPT in $INCDIR/*.nhc ; do
 	if [[ -e "$SCRIPT" ]]; then
             dbg "Loading ${SCRIPT/#*\/}"
             . $SCRIPT
@@ -395,40 +446,71 @@ function nhcmain_load_scripts() {
 
 function nhcmain_watchdog_timer() {
     local TIMEOUT="$1" NHC_PID="$2"
-    local SLEEP_PID
+    local SLEEP_PID MAIN_NHC_HUNG=0
 
+    # Start sleep process in background first so we can obtain its PID and set traps to handle signals.
     sleep $TIMEOUT &
     SLEEP_PID=$!
-    trap "kill -9 $SLEEP_PID >&/dev/null ; exit 0" EXIT HUP INT QUIT ILL ABRT FPE KILL SEGV PIPE ALRM TERM USR1 USR2 CONT STOP TSTP TTIN TTOU
+    trap '' ALRM TERM
+    trap "kill -9 $SLEEP_PID >&/dev/null ; exit 0" EXIT HUP INT QUIT ILL ABRT FPE KILL SEGV PIPE USR1 USR2 CONT STOP TSTP TTIN TTOU PWR
+    # Now we wait for the sleep to finish or for our process to be killed by the main NHC process.
     wait
+
+    # If we get here, the watchdog timer has expired, and we need to kill the NHC process (group).  Start gently.
+    log "NHC watchdog timer ${BASHPID:-$$} ($TIMEOUT secs) has expired.  Signaling NHC:  kill -s ALRM -- $NHC_PID"
     kill -s ALRM -- $NHC_PID || return 0
     sleep 1
+
+    # Send a stronger signal this time.  If there's nothing left to receive our signal, we're done.
+    log "NHC watchdog timer ${BASHPID:-$$} terminating NHC:  kill -s TERM -- $NHC_PID"
     kill -s TERM -- $NHC_PID 2>/dev/null || return 0
     sleep 3
+
+    # If we still had things to kill, check one last time and kill by force.
+    log "NHC watchdog timer ${BASHPID:-$$} terminating NHC with extreme prejudice:  kill -s KILL -- $NHC_PID"
+    if kill -0 ${NHC_PID#-} 2>/dev/null ; then
+        # Setting this to true means it's the main NHC that's still around, not merely a hung child process.  That
+        # means the main NHC process hasn't been able to terminate gracefully and write the appropriate message to
+        # stdout or the status file.  Thus the watchdog has to be the one to call die().  If it's just a hung child,
+        # we don't want to call die() again and overwrite the status message.
+        MAIN_NHC_HUNG=1
+    fi
     kill -s KILL -- $NHC_PID 2>/dev/null
+    sleep 1
+    if kill -0 ${NHC_PID#-} 2>/dev/null ; then
+        # If the main NHC survived a "kill -9" it must be defunct.  Assume it called die() and exited cleanly.
+        log "NHC process ${NHC_PID#-} is defunct.  Considering it terminated."
+    elif [[ $MAIN_NHC_HUNG -eq 1 ]]; then
+        # If the main NHC process survived SIGTERM but not SIGKILL, it likely didn't exit cleanly.  Call die().
+        WATCHDOG_PID=0
+        die 142 "Watchdog timer unable to terminate hung NHC process ${NHC_PID#-}."
+    fi
     return 0
 }
 
 function nhcmain_set_watchdog() {
     # Set ALARM to timeout script.
     if [[ $TIMEOUT -gt 0 ]]; then
-        eval nhcmain_watchdog_timer $TIMEOUT $NHC_PID &
+        # Start watchdog timer process in its own session.
+        set -m
+        eval nhcmain_watchdog_timer $TIMEOUT $((NHC_SID==0?NHC_PID:NHC_SID)) &
         WATCHDOG_PID=$!
         export WATCHDOG_PID
-        dbg "Watchdog PID is $WATCHDOG_PID, NHC PID is $NHC_PID"
+        set +m
+        dbg "In ${BASHPID:-$$}:  Watchdog PID is $WATCHDOG_PID, NHC PID is $NHC_PID"
     else
-        dbg "No watchdog, NHC PID is $NHC_PID"
+        dbg "In ${BASHPID:-$$}:  No watchdog, NHC PID is $NHC_PID"
     fi
 }
 
 function nhcmain_spawn_detached() {
     rm -f "$RESULTFILE" >/dev/null 2>&1
-    export NHC_DETACHED=$$
-    exec -a nhc-detached $0 </dev/null >/dev/null 2>&1
+    export NHC_DETACHED=${BASHPID:-$$}
+    exec -a ${NAME}-detached $0 </dev/null >/dev/null 2>&1
 }
 
 function nhcmain_detach() {
-    local RC MSG
+    local RC MSG ELAPSED
 
     # If the results file exists but the system has rebooted since its
     # creation, assume it's stale and remove it.
@@ -445,17 +527,23 @@ function nhcmain_detach() {
         MSG=""
     fi
 
-    # Launch detached process
+    # Launch detached process (hopefully in its own session)
+    set -m
     nhcmain_spawn_detached &
+    set +m
 
-    # Only mark offline/online in detached copy.
-    MARK_OFFLINE=0
-
+    syslog_flush
     if [[ "$RC" != "0" ]]; then
-        die $RC "$MSG"
-        return 1
+        echo "ERROR Health check failed:  $MSG"
+        exit $RC
     fi
-    nhcmain_finish
+
+    # FIXME:  TODO or !TODO, that is the question....
+    nhcmain_redirect_output
+    ELAPSED=$((SECONDS-NHC_START_TS))
+    vlog "Node Health Check detached parent completed successfully (${ELAPSED}s)."
+    [[ $NHC_FD_OUT -eq 3 ]] && exec 1>&3- 2>&4-
+    exit 0
 }
 
 function nhcmain_run_checks() {
@@ -466,13 +554,24 @@ function nhcmain_run_checks() {
         CHECK_DIED=0
 
         # Run the check.
-        vlog "Running check:  \"$CHECK\""
-        eval $CHECK
-        RET=$?
+        if [[ "$NHC_CHECK_FORKED" == 0 ]] || mcheck "$CHECK" '/( |^)(export )?[A-Za-z_][A-Za-z0-9_]*=[^ =]/'; then
+            vlog "Running check:  \"$CHECK\""
+            eval $CHECK
+            RET=$?
+        else
+            # Run the check in a separate forked process.
+            eval $CHECK &
+            vlog "Running check:  \"$CHECK\" (forked PID $!)"
+            wait $! >/dev/null 2>&1
+            RET=$?
+        fi
 
         # Check for failure.
         if [[ "$RET" != "0" && "$NHC_CHECK_ALL" != "1" ]]; then
-            if [[ "$CHECK_DIED" == "0" ]]; then
+            if [[ "$NHC_CHECK_FORKED" == "1" && "$RET" -gt 100 ]]; then
+                # The forked check did successfully call die(), so we don't have to.
+                exit $((RET-100))
+            elif [[ "$CHECK_DIED" == "0" ]]; then
                 # If the check failed but didn't call die(), use this fallback.
                 log "Node Health Check failed.  Check $CHECK returned $RET"
                 die $RET "Check $CHECK returned $RET"
@@ -483,9 +582,9 @@ function nhcmain_run_checks() {
     if [[ "$FAIL_CNT" > 0 && "$NHC_CHECK_ALL" == "1" ]]; then
         # One or more checks have failed.  Give final report and terminate.
         NHC_CHECK_ALL=0
-        log "$FAIL_CNT health checks failed."
+        log "ERROR:  $NAME:  $FAIL_CNT health checks failed."
         syslog "$FAIL_CNT health checks failed."
-        oecho "ERROR $FAIL_CNT health checks failed."
+        [[ -n "$LOGFILE" ]] && oecho "ERROR:  $NAME:  $FAIL_CNT health checks failed."
         syslog_flush
         kill_watchdog
         exit $FAIL_CNT
@@ -505,18 +604,20 @@ function nhcmain_finish() {
     ELAPSED=$((SECONDS-NHC_START_TS))
     vlog "Node Health Check completed successfully (${ELAPSED}s)."
     if [[ "$NHC_RM" == "sge" ]]; then
-        echo "begin"
-        echo "$HOSTNAME:healthy:true"
-        echo "$HOSTNAME:diagnosis:HEALTHY"
-        echo "end"
+        echo "begin" >&$NHC_FD_OUT
+        echo "$HOSTNAME:healthy:true" >&$NHC_FD_OUT
+        echo "$HOSTNAME:diagnosis:HEALTHY" >&$NHC_FD_OUT
+        echo "end" >&$NHC_FD_OUT
         return 0
-    fi        
+    fi
     kill_watchdog
-    [[ -n "$LOGFILE" ]] && exec 1>&3- 2>&4-
+    [[ $NHC_FD_OUT -eq 3 ]] && exec 1>&3- 2>&4-
+    #[[ $DEBUG -eq 1 ]] && times >&2
     exit 0
 }
 
 ### Script guts begin here.
+NHC_ARGS_LIST=( "$@" )
 if [[ -n "$NHC_LOAD_ONLY" ]]; then
     # We're only supposed to define functions, not actually run anything.
     return 0 || exit 0
@@ -525,7 +626,7 @@ fi
 trap 'die 129 "Terminated by signal SIGHUP." ; exit 129' 1
 trap 'die 130 "Terminated by signal SIGINT." ; exit 130' 2
 trap 'die 143 "Terminated by signal SIGTERM." ; exit 143' 15
-trap 'die 127 "Script timed out." ; exit 127' 14
+trap 'die 142 "Script timed out${CHECK:+ while executing \"$CHECK\"}." ; exit 142' 14
 
 nhcmain_init_env
 nhcmain_parse_cmdline "$@" || exit 10
@@ -533,18 +634,23 @@ nhcmain_load_sysconfig
 nhcmain_finalize_env
 nhcmain_redirect_output
 nhcmain_check_conffile || exit 0
-nhcmain_load_scripts
 if [[ "$NHC_RM" == "sge" ]]; then
     while : ; do
         read INPUT
         if [[ $? != 0 || "$INPUT" == "quit" ]]; then
             exit 0
         fi
+	# We need to do this each time to flush the caches which the
+	# scripts mostly keep (filesystems, process trees, etc.).
+	# Also the scripts can be changed without having to kill the
+	# sensor on all the hosts to pick that up.
+	nhcmain_load_scripts
         if nhcmain_run_checks ; then
             nhcmain_finish
         fi
     done
 else
+    nhcmain_load_scripts
     nhcmain_set_watchdog
     nhcmain_run_checks
     nhcmain_mark_online
