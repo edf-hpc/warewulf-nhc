@@ -3,7 +3,7 @@
 # Michael Jennings <mej@lbl.gov>
 # 15 December 2010
 #
-# $Id: ww_hw.nhc 1625 2014-03-21 20:42:39Z mej $
+# $Id: ww_hw.nhc 1844 2014-12-05 22:12:32Z mej $
 #
 
 HW_SOCKETS=0
@@ -21,6 +21,8 @@ HW_MODULES=( )
 HW_ETH_DEV=( )
 MCELOG="${MCELOG:-mcelog}"
 MCELOG_ARGS="${MCELOG_ARGS:---client}"
+MCELOG_MAX_CORRECTED_RATE="${MCELOG_MAX_CORRECTED_RATE:-9}"
+MCELOG_MAX_UNCORRECTED_RATE="${MCELOG_MAX_UNCORRECTED_RATE:-0}"
 
 # Read hardware information from /proc and /sys files.
 function nhc_hw_gather_data() {
@@ -58,6 +60,11 @@ function nhc_hw_gather_data() {
         if [[ -n "$SIBLINGS" ]]; then
             HW_THREADS=$((HW_SOCKETS*SIBLINGS))
         fi
+    else
+        HW_SOCKETS=1
+        HW_CORES=1
+        HW_THREADS=1
+        MHZ=0
     fi
     dbg "Got $HW_SOCKETS $MHZ MHz processors ($HW_CORES cores, $HW_THREADS threads)"
 
@@ -78,6 +85,11 @@ function nhc_hw_gather_data() {
                 HW_SWAP_FREE=${FIELD[1]}
             fi
         done < /proc/meminfo
+    else
+        HW_RAM_TOTAL=1024
+        HW_RAM_FREE=1
+        HW_SWAP_TOTAL=0
+        HW_SWAP_FREE=0
     fi
     dbg "Found $HW_RAM_TOTAL kB RAM ($HW_RAM_FREE kB free)"
     dbg "Found $HW_SWAP_TOTAL kB swap ($HW_SWAP_FREE kB free)"
@@ -103,6 +115,14 @@ function nhc_hw_gather_data() {
         dbg "Found ${HW_IB_STATE[$INDEX]} (${HW_IB_PHYS_STATE[$INDEX]}) IB Port ${HW_IB_DEV[$INDEX]} (${HW_IB_RATE[$INDEX]} Gb/sec)"
     done
     export HW_IB_STATE HW_IB_PHYS_STATE HW_IB_RATE
+
+    # Check if user-leved mad driver loaded and IB diag tools will succeed to run
+    if [[ -f /sys/class/infiniband_mad/abi_version ]]; then
+	read HW_IB_UMAD_ABI_VER < /sys/class/infiniband_mad/abi_version
+    else
+	HW_IB_UMAD_ABI_VER=0
+    fi
+    export HW_IB_UMAD_ABI_VER
 
     # Gather kernel modules
     if [[ -e /proc/modules ]]; then
@@ -315,6 +335,11 @@ function check_hw_ib() {
         nhc_hw_gather_data
     fi
 
+    if [[ $HW_IB_UMAD_ABI_VER -eq 0 ]]; then
+	die 1 "$FUNCNAME:  Version mismatch between kernel OFED drivers and userspace OFED libraries."
+	return 1
+    fi
+
     for ((i=0; i < ${#HW_IB_STATE[*]}; i++)); do
         if [[ "${HW_IB_STATE[$i]}" == "$STATE" && "${HW_IB_PHYS_STATE[$i]}" == "$PHYS_STATE" ]]; then
             if [[ (-z "$DEV" || "${HW_IB_DEV[$i]}" == "$DEV") && (-z "$RATE" || "${HW_IB_RATE[$i]}" == "$RATE") ]]; then
@@ -327,7 +352,7 @@ function check_hw_ib() {
         DEV=" $DEV"
     fi
     if [[ -n "$RATE" ]]; then
-        RATE=", $RATE Gb/sec"
+        RATE=" $RATE Gb/sec"
     fi
 
     die 1 "$FUNCNAME:  No IB port$DEV is $STATE ($PHYS_STATE$RATE)."
@@ -384,17 +409,66 @@ function check_hw_eth() {
 
 # Check for MCE errors
 function check_hw_mcelog() {
-    local HW_MCELOG_ERRS
+    local HW_MCELOG_ERRS MSG=""
+    local -a ERROR_LINES ERROR_LINE
+    local i
 
     HW_MCELOG_ERRS=$($MCELOG $MCELOG_ARGS 2>&1)
     if [[ -z "$HW_MCELOG_ERRS" ]]; then
         return 0
     elif mcheck_glob "$HW_MCELOG_ERRS" "*Connection refused*" ; then
-        log "check_hw_mcelog():  No mcelog daemon running on $HOSTNAME"
-        syslog "check_hw_mcelog():  No mcelog daemon running on $HOSTNAME"
+        log "$FUNCNAME:  No mcelog daemon running on $HOSTNAME"
+        syslog "$FUNCNAME:  No mcelog daemon running on $HOSTNAME"
         return 0
+    elif [[ -n "$MCELOG_MAX_CORRECTED_RATE" && -n "$MCELOG_MAX_UNCORRECTED_RATE" ]]; then
+        IFS=$'\n'
+        ERROR_LINES=( $HW_MCELOG_ERRS )
+        IFS=$' \t\n'
+
+        dbg "$FUNCNAME:  Checking for MCEs on each DIMM (with 24-hour thresholds of $MCELOG_MAX_CORRECTED_RATE corrected or $MCELOG_MAX_UNCORRECTED_RATE uncorrected errors)"
+
+        # Determine if any DIMMs have experienced dangerous error rates within
+        # the last 24 hours. Corrected errors are OK in small quantities. The
+        # expected mcelog output format for each DIMM will be:
+        #
+        # corrected memory errors:
+        #         325 total
+        #         9 in 24h
+        # uncorrected memory errors:
+        #         0 total
+        #         0 in 24h
+        #
+        for ((i=0; i<${#ERROR_LINES[*]}; i++)); do
+            if [[ "${ERROR_LINES[$i]}" == "corrected memory errors:" ]] ; then
+                ERROR_LINE=( ${ERROR_LINES[$(($i+2))]} )
+                dbg "$FUNCNAME:  This DIMM detected ${ERROR_LINE[0]} corrected errors within the last 24 hours"
+
+                if [[ ${ERROR_LINE[0]} -gt $MCELOG_MAX_CORRECTED_RATE ]]; then
+                    MSG="$FUNCNAME:  MCEs detected - ${ERROR_LINE[0]} corrected memory errors detected (limit of $MCELOG_MAX_CORRECTED_RATE/day)."
+                    break
+                fi
+            elif [[ "${ERROR_LINES[$i]}" == "uncorrected memory errors:" ]] ; then
+                ERROR_LINE=( ${ERROR_LINES[$(($i+2))]} )
+                dbg "$FUNCNAME:  This DIMM detected ${ERROR_LINE[0]} UNcorrected errors within the last 24 hours"
+
+                if [[ ${ERROR_LINE[0]} -gt $MCELOG_MAX_UNCORRECTED_RATE ]]; then
+                    MSG="$FUNCNAME:  MCEs detected - ${ERROR_LINE[0]} UNcorrected memory errors detected (limit of $MCELOG_MAX_UNCORRECTED_RATE/day)."
+                    break
+                fi
+            fi
+        done
+        if [[ -n "$MSG" ]]; then
+            log "$MSG"
+            die 1 "$MSG"
+            return 1
+        fi
+        
+        # If none of the above thresholds was met, return success.
+        return 0
+    else
+        dbg "$FUNCNAME:  mcelog output was not empty; thresholds have not been set, so we must assume the MCEs are fatal"
+        log "$FUNCNAME:  MCEs detected:  $HW_MCELOG_ERRS"
+        die 1 "$FUNCNAME:  MCEs detected in log."
+        return 1
     fi
-    log "check_hw_mcelog():  MCEs detected:  $HW_MCELOG_ERRS"
-    die 1 "$FUNCNAME:  MCEs detected in log."
-    return 1
 }

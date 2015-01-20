@@ -1,4 +1,4 @@
-%{!?_rel:%{expand:%%global _rel 0.r%(test "1723" != "0000" && echo "1723" || svnversion | sed 's/[^0-9].*$//' | grep '^[0-9][0-9]*$' || git svn find-rev `git show -s --pretty=format:%h` || echo 0000)}}
+%{!?_rel:%{expand:%%global _rel 0.r%(test "1845" != "0000" && echo "1845" || svnversion | sed 's/[^0-9].*$//' | grep '^[0-9][0-9]*$' || git svn find-rev `git show -s --pretty=format:%h` || echo 0000)}}
 
 %{!?sname:%global sname nhc}
 %{!?nhc_script_dir:%global nhc_script_dir %{_sysconfdir}/%{sname}/scripts}
@@ -6,7 +6,7 @@
 
 Summary: Warewulf Node Health Check System
 Name: warewulf-nhc
-Version: 1.4
+Version: 1.4.1
 #Release: %{_rel}%{?dist}
 Release: 1%{?dist}
 License: US Dept. of Energy (BSD-like)
@@ -66,3 +66,5 @@ test "$RPM_BUILD_ROOT" != "/" && %{__rm} -rf $RPM_BUILD_ROOT
 %config(noreplace) %{nhc_script_dir}/*.nhc
 %config(noreplace) %{nhc_helper_dir}/*
 %config(noreplace) %{_sbindir}/%{sname}
+%config(noreplace) %{_sbindir}/%{sname}-genconf
+%config(noreplace) %{_sbindir}/%{sname}-wrapper

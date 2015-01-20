@@ -1,11 +1,19 @@
-dnl# $Id: configure.in 1562 2014-02-11 00:58:01Z mej $
+dnl# $Id: configure.in 1804 2014-10-16 01:15:38Z mej $
 
 AC_PREREQ(2.59)
-AC_INIT([warewulf-nhc], [1.4], [warewulf-devel@lbl.gov])
+AC_INIT([warewulf-nhc], [1.4.1], [warewulf-devel@lbl.gov])
 AC_CONFIG_SRCDIR([.])
 
 AC_PROG_INSTALL
 AM_INIT_AUTOMAKE([foreign])
+
+m4_ifdef([AC_PROG_MKDIR_P], [
+  AC_PROG_MKDIR_P
+], [
+  AM_PROG_MKDIR_P
+  MKDIR_P=${mkdir_p}
+  AC_SUBST([MKDIR_P])
+])#m4_ifdef
 
 dnl# Try to get SVN revision
 SVNVERSION=`svnversion -c | sed 's/^.*://g' 2>/dev/null || echo 0000`

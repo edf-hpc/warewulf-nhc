@@ -3,7 +3,7 @@
 # Michael Jennings <mej@lbl.gov>
 # 29 June 2012
 #
-# $Id: shut.inc.sh 1460 2013-11-06 21:55:39Z mej $
+# $Id: shut.inc.sh 1753 2014-09-03 19:19:41Z mej $
 #
 
 # This is a simple unit test framework for BASH shell scripts.  The

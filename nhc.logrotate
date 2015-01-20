@@ -1,6 +1,6 @@
 # Log rotation configuration for Warewulf NHC
 #
-# $Id: nhc.logrotate 1168 2012-10-26 01:29:14Z mej $
+# $Id: nhc.logrotate 1753 2014-09-03 19:19:41Z mej $
 #
 
 /var/log/nhc.log {
