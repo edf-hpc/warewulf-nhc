@@ -1,0 +1,50 @@
+From: Mehdi Dogguy <mehdi@dogguy.org>
+Date: Wed, 21 Jan 2015 11:22:27 +0100
+Subject: [PATCH] Debianize NHC
+
+---
+ nhc         |    2 +-
+ nhc-genconf |    2 +-
+ nhc-wrapper |    2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/nhc b/nhc
+index 8e3ea1d..e19b2f3 100755
+--- a/nhc
++++ b/nhc
+@@ -161,7 +161,7 @@ function nhcmain_init_env() {
+ 
+     # Static variables
+     PATH="/sbin:/usr/sbin:/bin:/usr/bin"
+-    SYSCONFIGDIR="/etc/sysconfig"
++    SYSCONFIGDIR="/etc/default"
+     LIBEXECDIR="/usr/libexec"
+     if [[ -r /proc/sys/kernel/hostname ]]; then
+         read HOSTNAME < /proc/sys/kernel/hostname
+diff --git a/nhc-genconf b/nhc-genconf
+index 6be7ad7..588f1ee 100755
+--- a/nhc-genconf
++++ b/nhc-genconf
+@@ -38,7 +38,7 @@ function dbg() {
+ function nhcgc_init_env() {
+     umask 0077
+     PATH="/sbin:/usr/sbin:/bin:/usr/bin"
+-    SYSCONFIGDIR="/etc/sysconfig"
++    SYSCONFIGDIR="/etc/default"
+     LIBEXECDIR="/usr/libexec"
+     if [[ -r /proc/sys/kernel/hostname ]]; then
+         read HOSTNAME < /proc/sys/kernel/hostname
+diff --git a/nhc-wrapper b/nhc-wrapper
+index ef90ab4..699a0ef 100755
+--- a/nhc-wrapper
++++ b/nhc-wrapper
+@@ -66,7 +66,7 @@ function nhc_parse_timespec() {
+ function nhcwrap_init_env() {
+     umask 0077
+     PATH="/sbin:/usr/sbin:/bin:/usr/bin"
+-    SYSCONFIGDIR="/etc/sysconfig"
++    SYSCONFIGDIR="/etc/default"
+     LIBEXECDIR="/usr/libexec"
+     if [[ -r /proc/sys/kernel/hostname ]]; then
+         read HOSTNAME < /proc/sys/kernel/hostname
+-- 
