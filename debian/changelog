@@ -1,8 +1,9 @@
 warewulf-nhc (1.4.1-1) UNRELEASED; urgency=medium
 
   * New upstream release.
+  * Add ${misc:Depends} to Depends line
 
- -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Tue, 20 Jan 2015 14:57:44 +0100
+ -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Wed, 21 Jan 2015 10:58:19 +0100
 
 warewulf-nhc (1.4-1) squeeze; urgency=low
 
