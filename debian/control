@@ -3,7 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: EDF CCN-HPC <dsp-cspito-ccn-hpc@edf.fr>
 Uploaders: Antonio J. Russo <antonio-externe.russo@edf.fr>, Mehdi Dogguy <mehdi.dogguy@edf.fr>
-Build-Depends: debhelper (>= 8),subversion
+Build-Depends: debhelper (>= 8)
 Standards-Version: 3.9.5
 Homepage: http://warewulf.lbl.gov/trac/wiki/Node%20Health%20Check
 
