@@ -1,4 +1,4 @@
-warewulf-nhc (1.4.1-1) UNRELEASED; urgency=medium
+warewulf-nhc (1.4.1-1) wheezy; urgency=medium
 
   * New upstream release.
   * Add ${misc:Depends} to Depends line
@@ -11,7 +11,7 @@ warewulf-nhc (1.4.1-1) UNRELEASED; urgency=medium
 
  -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Wed, 21 Jan 2015 11:22:45 +0100
 
-warewulf-nhc (1.4-1) squeeze; urgency=low
+warewulf-nhc (1.4-1) wheezy; urgency=low
 
   * Initial release
 
