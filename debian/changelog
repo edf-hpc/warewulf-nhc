@@ -5,8 +5,9 @@ warewulf-nhc (1.4.1-1) UNRELEASED; urgency=medium
   * Mark CCN-HPC as a maintainer and others as uploaders
   * Add myself as an uploader
   * Remove subversion from Build-Depends
+  * Set libexecdir to /usr/lib/warewulf-nhc
 
- -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Wed, 21 Jan 2015 11:18:04 +0100
+ -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Wed, 21 Jan 2015 11:20:19 +0100
 
 warewulf-nhc (1.4-1) squeeze; urgency=low
 
