@@ -2,8 +2,10 @@ warewulf-nhc (1.4.1-1) UNRELEASED; urgency=medium
 
   * New upstream release.
   * Add ${misc:Depends} to Depends line
+  * Mark CCN-HPC as a maintainer and others as uploaders
+  * Add myself as an uploader
 
- -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Wed, 21 Jan 2015 10:58:19 +0100
+ -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Wed, 21 Jan 2015 11:00:38 +0100
 
 warewulf-nhc (1.4-1) squeeze; urgency=low
 
