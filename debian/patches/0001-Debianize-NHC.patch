@@ -1,50 +1,74 @@
-From: Mehdi Dogguy <mehdi@dogguy.org>
-Date: Wed, 21 Jan 2015 11:22:27 +0100
-Subject: [PATCH] Debianize NHC
+From 16d76343d0174faf71db93b9315bb7431c40a0aa Mon Sep 17 00:00:00 2001
+From: Thomas HAMEL <thomas-externe.hamel@edf.fr>
+Date: Mon, 29 Feb 2016 17:25:22 +0100
+Subject: [PATCH] Detect debian path for SYSCONFDIR and LIBEXECDIR
 
 ---
- nhc         |    2 +-
- nhc-genconf |    2 +-
- nhc-wrapper |    2 +-
- 3 files changed, 3 insertions(+), 3 deletions(-)
+ nhc         |    9 +++++++--
+ nhc-genconf |    9 +++++++--
+ nhc-wrapper |    9 +++++++--
+ 3 files changed, 21 insertions(+), 6 deletions(-)
 
 diff --git a/nhc b/nhc
-index 8e3ea1d..e19b2f3 100755
+index 8e3ea1d..604cde0 100755
 --- a/nhc
 +++ b/nhc
-@@ -161,7 +161,7 @@ function nhcmain_init_env() {
+@@ -161,8 +161,13 @@ function nhcmain_init_env() {
  
      # Static variables
      PATH="/sbin:/usr/sbin:/bin:/usr/bin"
 -    SYSCONFIGDIR="/etc/sysconfig"
-+    SYSCONFIGDIR="/etc/default"
-     LIBEXECDIR="/usr/libexec"
+-    LIBEXECDIR="/usr/libexec"
++    if [[ "x$(lsb_release -i -s 2> /dev/null)" == "xDebian" ]]; then
++        SYSCONFIGDIR="/etc/default"
++        LIBEXECDIR="/usr/lib/warewulf-nhc"
++    else
++        SYSCONFIGDIR="/etc/sysconfig"
++        LIBEXECDIR="/usr/libexec"
++    fi
      if [[ -r /proc/sys/kernel/hostname ]]; then
          read HOSTNAME < /proc/sys/kernel/hostname
+     elif [[ -z "$HOSTNAME" ]]; then
 diff --git a/nhc-genconf b/nhc-genconf
-index 6be7ad7..588f1ee 100755
+index 6be7ad7..59afa8f 100755
 --- a/nhc-genconf
 +++ b/nhc-genconf
-@@ -38,7 +38,7 @@ function dbg() {
+@@ -38,8 +38,13 @@ function dbg() {
  function nhcgc_init_env() {
      umask 0077
      PATH="/sbin:/usr/sbin:/bin:/usr/bin"
 -    SYSCONFIGDIR="/etc/sysconfig"
-+    SYSCONFIGDIR="/etc/default"
-     LIBEXECDIR="/usr/libexec"
+-    LIBEXECDIR="/usr/libexec"
++    if [[ "x$(lsb_release -i -s 2> /dev/null)" == "xDebian" ]]; then
++        SYSCONFIGDIR="/etc/default"
++        LIBEXECDIR="/usr/lib/warewulf-nhc"
++    else
++        SYSCONFIGDIR="/etc/sysconfig"
++        LIBEXECDIR="/usr/libexec"
++    fi
      if [[ -r /proc/sys/kernel/hostname ]]; then
          read HOSTNAME < /proc/sys/kernel/hostname
+     else
 diff --git a/nhc-wrapper b/nhc-wrapper
-index ef90ab4..699a0ef 100755
+index ef90ab4..20efb76 100755
 --- a/nhc-wrapper
 +++ b/nhc-wrapper
-@@ -66,7 +66,7 @@ function nhc_parse_timespec() {
+@@ -66,8 +66,13 @@ function nhc_parse_timespec() {
  function nhcwrap_init_env() {
      umask 0077
      PATH="/sbin:/usr/sbin:/bin:/usr/bin"
 -    SYSCONFIGDIR="/etc/sysconfig"
-+    SYSCONFIGDIR="/etc/default"
-     LIBEXECDIR="/usr/libexec"
+-    LIBEXECDIR="/usr/libexec"
++    if [[ "x$(lsb_release -i -s 2> /dev/null)" == "xDebian" ]]; then
++        SYSCONFIGDIR="/etc/default"
++        LIBEXECDIR="/usr/lib/warewulf-nhc"
++    else
++        SYSCONFIGDIR="/etc/sysconfig"
++        LIBEXECDIR="/usr/libexec"
++    fi
      if [[ -r /proc/sys/kernel/hostname ]]; then
          read HOSTNAME < /proc/sys/kernel/hostname
+     else
 -- 
+1.7.10.4
+
