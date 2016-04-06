@@ -1,3 +1,14 @@
+warewulf-nhc (1.4.1-2~calibre7+1) calibre9; urgency=low
+
+  * Calibre 7 backport
+
+ -- Thomas HAMEL <thomas-externe.hamel@edf.fr>  Wed, 06 Apr 2016 11:42:15 +0200
+
+warewulf-nhc (1.4.1-2) jessie; urgency=medium
+  * Change libexecdir and SYSCONFIG dir at runtime
+
+ -- Thomas HAMEL <thomas-externe.hamel@edf.fr>  Mon, 29 Feb 2016 18:17:45 +0100
+
 warewulf-nhc (1.4.1-1+c7+1) calibre7; urgency=medium
   * Port to calibre7
 
