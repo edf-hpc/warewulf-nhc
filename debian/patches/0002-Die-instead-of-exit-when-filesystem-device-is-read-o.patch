@@ -16,7 +16,7 @@ index 604cde0..fa57bf9 100755
              syslog "NHC:  FATAL:  Can't write $LOGFILE as $USER (uid $EUID) -- Read-only filesystem/device failure?"
              syslog_flush
 -            exit 1
-+            die 130
++            die 130 "Read-only filesystem/device failure?"
          else
              dbg "Output redirected per LOGFILE variable $LOGFILE"
              NHC_FD_OUT=3
