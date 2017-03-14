@@ -1,12 +1,11 @@
-From 16d76343d0174faf71db93b9315bb7431c40a0aa Mon Sep 17 00:00:00 2001
 From: Thomas HAMEL <thomas-externe.hamel@edf.fr>
 Date: Mon, 29 Feb 2016 17:25:22 +0100
-Subject: [PATCH] Detect debian path for SYSCONFDIR and LIBEXECDIR
+Subject: Detect debian path for SYSCONFDIR and LIBEXECDIR
 
 ---
- nhc         |    9 +++++++--
- nhc-genconf |    9 +++++++--
- nhc-wrapper |    9 +++++++--
+ nhc         | 9 +++++++--
+ nhc-genconf | 9 +++++++--
+ nhc-wrapper | 9 +++++++--
  3 files changed, 21 insertions(+), 6 deletions(-)
 
 diff --git a/nhc b/nhc
@@ -69,6 +68,3 @@ index ef90ab4..20efb76 100755
      if [[ -r /proc/sys/kernel/hostname ]]; then
          read HOSTNAME < /proc/sys/kernel/hostname
      else
--- 
-1.7.10.4
-

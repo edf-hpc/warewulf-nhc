@@ -1,3 +1,10 @@
+warewulf-nhc (1.4.1-3) jessie; urgency=medium
+
+  * Die instead of exit when filesystem/device is read-only
+    - Add 0002-Die-instead-of-exit-when-filesystem-device-is-read-o.patch
+
+ -- Mehdi Dogguy <mehdi.dogguy@edf.fr>  Tue, 14 Mar 2017 10:00:17 +0100
+
 warewulf-nhc (1.4.1-2~calibre7+1) calibre9; urgency=low
 
   * Calibre 7 backport
@@ -5,11 +12,13 @@ warewulf-nhc (1.4.1-2~calibre7+1) calibre9; urgency=low
  -- Thomas HAMEL <thomas-externe.hamel@edf.fr>  Wed, 06 Apr 2016 11:42:15 +0200
 
 warewulf-nhc (1.4.1-2) jessie; urgency=medium
+
   * Change libexecdir and SYSCONFIG dir at runtime
 
  -- Thomas HAMEL <thomas-externe.hamel@edf.fr>  Mon, 29 Feb 2016 18:17:45 +0100
 
 warewulf-nhc (1.4.1-1+c7+1) calibre7; urgency=medium
+
   * Port to calibre7
 
  -- Thomas HAMEL <thomas-externe.hamel@edf.fr>  Mon, 29 Feb 2016 14:33:00 +0100
